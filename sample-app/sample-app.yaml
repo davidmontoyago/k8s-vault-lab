@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-demo-deployment
+  labels:
+    app: java-demo
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: java-demo
+  template:
+    metadata:
+      labels:
+        app: java-demo
+    spec:
+      serviceAccountName: mysql-didb-vault
+      initContainers:
+        - name: app-creds-init
+          image: everpeace/curl-jq
+          command:
+            - "sh"
+            - "-c"
+            - >
+              set -e;
+              KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token);
+              curl --request POST --data '{"jwt": "'"$KUBE_TOKEN"'", "role": "didb"}' http://vault:8200/v1/auth/kubernetes/login | jq -j '.auth.client_token' > /etc/vault/token;
+              X_VAULT_TOKEN=$(cat /etc/vault/token);
+              curl --header "X-Vault-Token: $X_VAULT_TOKEN" http://vault:8200/v1/database/creds/didb > /etc/app/creds.json;
+          volumeMounts:
+            - name: app-creds
+              mountPath: /etc/app
+            - name: vault-token
+              mountPath: /etc/vault
+      containers:
+        - name: java-vertx-demo
+          image: quay.io/pmcfadden/java-vertx-demo:0.1.9
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: app-creds
+              mountPath: /etc/app
+        - name: app-creds-manager
+          image: everpeace/curl-jq
+          command:
+            - "sh"
+            - "-c"
+            - >
+              set -e;
+              X_VAULT_TOKEN=$(cat /etc/vault/token);
+              VAULT_LEASE_ID=$(cat /etc/app/creds.json | jq -j '.lease_id');
+              while true; do
+                curl --request PUT --header "X-Vault-Token: $X_VAULT_TOKEN" --data '{"lease_id": "'"$VAULT_LEASE_ID"'", "increment": 3600}' http://vault:8200/v1/sys/leases/renew;
+                sleep 3600;
+              done
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - "sh"
+                  - "-c"
+                  - >
+                    set -e;
+                    X_VAULT_TOKEN=$(cat /etc/vault/token);
+                    VAULT_LEASE_ID=$(cat /etc/app/creds.json | jq -j '.lease_id');
+                    curl --request PUT --header "X-Vault-Token: $X_VAULT_TOKEN" --data '{"lease_id": "'"$VAULT_LEASE_ID"'"}' http://vault:8200/v1/sys/leases/revoke;
+          volumeMounts:
+            - name: app-creds
+              mountPath: /etc/app
+            - name: vault-token
+              mountPath: /etc/vault
+      volumes:
+        - name: app-creds
+          emptyDir: {}
+        - name: vault-token
+          emptyDir: {}
