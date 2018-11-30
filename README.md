@@ -29,7 +29,7 @@ kubectl apply -f sample-app/sample-db/mysql.yaml
 
 Redirect traffic to the pod from your localhost.
 ```
-kubectl port-forward vault-o 8200
+kubectl port-forward vault-0 8200
 ```
 ```
 export VAULT_ADDR=http://localhost:8200
