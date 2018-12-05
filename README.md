@@ -1,5 +1,31 @@
 # Prototype of auto unsealing Vault with dynamic app creds on K8s
 
+## Deploy a Consul cluster
+Use Consul as storage backend.
+
+```
+helm install --name consul --set='affinity=null,DisableHostNodeId=true,ImageTag=1.4.0' stable/consul
+```
+
+## Deploy Consul client on all nodes using a DaemonSet
+
+The recommended practice is to have a Consul client running on every node and have the Vault backend point to the host IP using the K8s downward API.
+
+Grab the gossip encryption key from the server.
+```
+kubectl exec consul-0 -- consul keyring -list
+```
+
+Store consul gossip key as a K8s secret so that the consul client can use it.
+```
+kubectl create secret generic consul-secrets --from-literal=gossip-encryption-key='<your_gossip_encryption_key>'
+```
+
+Deploy client.
+```
+kubectl apply -f consul/consul-client.yaml
+```
+
 ## Build Vault initializer/unsealer image
 
 ```
