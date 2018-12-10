@@ -1,4 +1,4 @@
-# Prototype of auto unsealing Vault with dynamic app creds on K8s
+# Prototype of auto unsealing Vault with Consul backend and dynamic app creds on K8s
 
 ## Deploy a Consul cluster
 Use Consul as storage backend.
